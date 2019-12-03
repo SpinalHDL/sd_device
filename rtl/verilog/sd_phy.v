@@ -205,8 +205,22 @@ end
 
 assign spi_sel = ~spi_cs & ~sd_dat_oe[3];
 
+reg diselectedTarget = 0;
+reg diselectedHit = 0;
+reg csOld = 0;
+wire diselect;
+always @(posedge clk_50) begin
+    if(!csOld && spi_cs) begin
+        diselectedTarget <= ~diselectedHit;
+    end
+    csOld <= spi_cs;
+end
+
+assign diselect = diselectedTarget != diselectedHit;
 
 always @(posedge sd_clk or negedge reset_n) begin
+
+   diselectedHit <= diselectedTarget;
 
    sd_cmd_last <= sd_cmd;
    sd_dat_last <= sd_dat[0];
@@ -309,6 +323,13 @@ always @(posedge sd_clk or negedge reset_n) begin
             distate <= ST_DATA_READ_3;
          end
          endcase
+
+         if (diselect) begin
+             data_in_done <= 1;
+             do_crc_token <= 0;
+             data_in_busy <= 0;
+             distate <= ST_IDLE;
+         end
       end
       else begin
          // SD mode: falling edge of DAT0, and output state not driving
@@ -444,7 +465,7 @@ always @(negedge sd_clk or negedge reset_n) begin
       if (mode_spi_s) begin
          // SPI-mode responses
          case(resp_type_s)
-         RESP_R1, RESP_BAD: begin
+         RESP_R1, RESP_R1B, RESP_BAD: begin
             // One byte
             if(odc==7) ostate <= ST_RESP_WRITE_END;
          end
